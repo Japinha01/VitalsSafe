@@ -7,8 +7,8 @@ import sqlite3
 from datetime import date
 from enum import Enum
 from typing import List, Dict, Optional
-from fastapi import FastAPI, HTTPException, status, Request, Form, UploadFile, File
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, status, Request, Form, UploadFile, File, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 import qrcode
 from PIL import Image, ImageDraw
@@ -24,7 +24,7 @@ except ImportError:
 app = FastAPI(
     title="VitalsSafe - Plataforma de Saúde Pessoal",
     description="Sistema Pessoal de Emergência e Gestão de Documentos Médicos com Scanner Inteligente.",
-    version="6.0.1"
+    version="6.0.2"
 )
 
 DB_FILE = "vitals_safe.db"
@@ -472,7 +472,7 @@ def homologar_revisao_documento_ia(cpf: str, doc_id: int, texto_final: str = For
     return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
 
 
-# --- GERADOR INTERNO DO QR CODE ---
+# --- GERADOR INTERNO DO QR CODE (CORRIGIDO PARA IPHONE) ---
 
 @app.get("/pacientes/meu-perfil/{cpf}/qrcode-cartao")
 def obtener_qr_code_cartao(cpf: str, request: Request):
@@ -495,8 +495,9 @@ def obtener_qr_code_cartao(cpf: str, request: Request):
     img = qr.make_image(fill_color="#002d5a", back_color="white")
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="image/png")
+    
+    # Resolvido: Retorna o Response bruto com Content-Length calculado
+    return Response(content=buffer.getvalue(), media_type="image/png")
 
 
 # --- INFRAESTRUTURA PWA ---
@@ -516,6 +517,8 @@ def obtener_manifesto_pwa_dinamico(cpf: str, request: Request):
     return JSONResponse(content=manifest_data)
 
 
+# --- ÍCONE DO APLICATIVO (CORRIGIDO PARA IPHONE) ---
+
 @app.get("/app-icon.png")
 def obter_icone_app():
     img = Image.new("RGBA", (192, 192), color="#002d5a")
@@ -524,8 +527,9 @@ def obter_icone_app():
     draw.rectangle([40, 81, 152, 111], fill="#ffffff")
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="image/png")
+    
+    # Resolvido: Retorna o Response bruto evitando bugs do Safari localizador
+    return Response(content=buffer.getvalue(), media_type="image/png")
 
 
 # --- INTERFACE DO APLICATIVO WEB PWA ---
@@ -615,7 +619,7 @@ def visualizar_cartao_digital_webview(cpf: str, request: Request):
     return HTMLResponse(content=html_content)
 
 
-# --- GERADOR DO ARQUIVO .PKPASS ---
+# --- GERADOR DO ARQUIVO .PKPASS (CORRIGIDO PARA IPHONE) ---
 
 @app.get("/pacientes/meu-perfil/{cpf}/pkpass")
 def baixar_carteira_apple_wallet(cpf: str, request: Request):
@@ -686,9 +690,10 @@ def baixar_carteira_apple_wallet(cpf: str, request: Request):
         zip_file.writestr('icon.png', icon_buffer.getvalue())
         zip_file.writestr('logo.png', logo_buffer.getvalue())
         
-    zip_buffer.seek(0)
     headers = {"Content-Disposition": f"attachment; filename=vitalssafe_{cpf}.pkpass"}
-    return StreamingResponse(zip_buffer, media_type="application/vnd.apple.pkpass", headers=headers)
+    
+    # Resolvido: Retorna os dados compactados em Response tradicional com tamanho explícito
+    return Response(content=zip_buffer.getvalue(), media_type="application/vnd.apple.pkpass", headers=headers)
 
 
 # --- VISÃO PÚBLICA DO SOCORRISTA ---
