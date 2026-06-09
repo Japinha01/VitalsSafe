@@ -24,7 +24,7 @@ except ImportError:
 app = FastAPI(
     title="VitalsSafe - Plataforma de Saúde Pessoal",
     description="Sistema Pessoal de Emergência e Gestão de Documentos Médicos com Scanner Inteligente.",
-    version="6.0.2"
+    version="6.0.3"
 )
 
 DB_FILE = "vitals_safe.db"
@@ -234,8 +234,17 @@ def index_portal():
 def login_paciente(cpf: str = Form(...)):
     p = buscar_dados_completos(cpf)
     if not p:
-        return HTMLResponse("<h2>Paciente não encontrado! <a href='/'>Voltar</a></h2>", status_code=404)
-    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
+        # Resolvido: Retorna HTML renderizável com status 200 para evitar downloads forçados no Chrome
+        return HTMLResponse("""
+        <html>
+        <body style="font-family:sans-serif; background-color:#0b0f19; color:white; text-align:center; padding:50px;">
+            <h2 style="color:#ef4444;">⚠️ Paciente não encontrado!</h2>
+            <p>Verifique o número do CPF digitado (apenas números).</p>
+            <br><a href="/" style="background-color:#2563eb; color:white; padding:10px 20px; text-decoration:none; border-radius:8px; font-weight:bold;">Voltar ao Início</a>
+        </body>
+        </html>
+        """, status_code=200)
+    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=302)
 
 @app.post("/cadastro")
 def cadastrar_novo_paciente_form(nome_completo: str = Form(...), cpf: str = Form(...), data_nascimento: str = Form(...), tipo_sanguineo: str = Form(...), contato_emergencia: str = Form(...)):
@@ -250,9 +259,18 @@ def cadastrar_novo_paciente_form(nome_completo: str = Form(...), cpf: str = Form
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        return HTMLResponse("<h2>CPF já possui cadastro no VitalsSafe! <a href='/'>Voltar</a></h2>", status_code=400)
+        # Resolvido: Retorna HTML estruturado caso o usuário já exista para bloquear loops do Chrome
+        return HTMLResponse("""
+        <html>
+        <body style="font-family:sans-serif; background-color:#0b0f19; color:white; text-align:center; padding:50px;">
+            <h2 style="color:#f59e0b;">⚠️ Este CPF já possui uma ficha médica ativa!</h2>
+            <p>Se você já se cadastrou, use a área de login na página inicial.</p>
+            <br><a href="/" style="background-color:#2563eb; color:white; padding:10px 20px; text-decoration:none; border-radius:8px; font-weight:bold;">Voltar e Fazer Login</a>
+        </body>
+        </html>
+        """, status_code=200)
     conn.close()
-    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
+    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=302)
 
 
 # --- INTERFACE CENTRAL: PAINEL EXCLUSIVO DO PACIENTE ---
@@ -261,7 +279,14 @@ def cadastrar_novo_paciente_form(nome_completo: str = Form(...), cpf: str = Form
 def painel_gerenciamento_paciente(cpf: str):
     p = buscar_dados_completos(cpf)
     if not p:
-        raise HTTPException(status_code=404, detail="Paciente inválido")
+        return HTMLResponse("""
+        <html>
+        <body style="font-family:sans-serif; background-color:#0b0f19; color:white; text-align:center; padding:50px;">
+            <h2 style="color:#ef4444;">⚠️ Ficha médica indisponível ou inválida.</h2>
+            <br><a href="/" style="background-color:#2563eb; color:white; padding:10px 20px; text-decoration:none; border-radius:8px; font-weight:bold;">Voltar ao Início</a>
+        </body>
+        </html>
+        """, status_code=200)
         
     alergias_linhas = ""
     for a in p["alergias"]:
@@ -414,7 +439,7 @@ def painel_add_alergia(cpf: str, substancia: str = Form(...), gravidade: str = F
     cursor.execute("INSERT INTO alergias (paciente_cpf, substancia, gravidade) VALUES (?, ?, ?)", (cpf, substancia, gravidade))
     conn.commit()
     conn.close()
-    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
+    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=302)
 
 @app.post("/pacientes/{cpf}/add-doenca")
 def painel_add_doenca(cpf: str, nome: str = Form(...), observacoes: Optional[str] = Form(None)):
@@ -423,7 +448,7 @@ def painel_add_doenca(cpf: str, nome: str = Form(...), observacoes: Optional[str
     cursor.execute("INSERT INTO doencas_cronicas (paciente_cpf, nome, status, observacoes) VALUES (?, ?, 'Ativo', ?)", (cpf, nome, observacoes))
     conn.commit()
     conn.close()
-    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
+    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=302)
 
 
 # --- MOTOR DE SCANNER / OCR (SIMULADO) ---
@@ -448,7 +473,7 @@ async def processar_e_escanear_documento(cpf: str, tipo_documento: str = Form(..
     conn.commit()
     conn.close()
     
-    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
+    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=302)
 
 
 @app.post("/pacientes/{cpf}/documentos/{doc_id}/revisar")
@@ -469,10 +494,10 @@ def homologar_revisao_documento_ia(cpf: str, doc_id: int, texto_final: str = For
         
     conn.commit()
     conn.close()
-    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=303)
+    return RedirectResponse(url=f"/pacientes/meu-perfil/{cpf}/painel", status_code=302)
 
 
-# --- GERADOR INTERNO DO QR CODE (CORRIGIDO PARA IPHONE) ---
+# --- GERADOR INTERNO DO QR CODE (CORRIGIDO PARA IPHONE/CHROME) ---
 
 @app.get("/pacientes/meu-perfil/{cpf}/qrcode-cartao")
 def obtener_qr_code_cartao(cpf: str, request: Request):
@@ -483,7 +508,7 @@ def obtener_qr_code_cartao(cpf: str, request: Request):
     conn.close()
     
     if not row:
-        raise HTTPException(status_code=404, detail="Paciente não encontrado.")
+        return Response(content=b"Erro", media_type="text/plain")
     
     base_url = str(request.base_url).rstrip("/")
     url_publica_emergencia = f"{base_url}/emergencia/{row[0]}"
@@ -496,7 +521,6 @@ def obtener_qr_code_cartao(cpf: str, request: Request):
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
     
-    # Resolvido: Retorna o Response bruto com Content-Length calculado
     return Response(content=buffer.getvalue(), media_type="image/png")
 
 
@@ -517,7 +541,7 @@ def obtener_manifesto_pwa_dinamico(cpf: str, request: Request):
     return JSONResponse(content=manifest_data)
 
 
-# --- ÍCONE DO APLICATIVO (CORRIGIDO PARA IPHONE) ---
+# --- ÍCONE DO APLICATIVO ---
 
 @app.get("/app-icon.png")
 def obter_icone_app():
@@ -528,7 +552,6 @@ def obter_icone_app():
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
     
-    # Resolvido: Retorna o Response bruto evitando bugs do Safari localizador
     return Response(content=buffer.getvalue(), media_type="image/png")
 
 
@@ -543,7 +566,7 @@ def visualizar_cartao_digital_webview(cpf: str, request: Request):
     conn.close()
     
     if not row:
-        raise HTTPException(status_code=404, detail="Paciente não encontrado.")
+        return HTMLResponse("<h2>Cartão indisponível.</h2>", status_code=200)
         
     hoje = date.today()
     nasc = date.fromisoformat(row[1])
@@ -619,13 +642,13 @@ def visualizar_cartao_digital_webview(cpf: str, request: Request):
     return HTMLResponse(content=html_content)
 
 
-# --- GERADOR DO ARQUIVO .PKPASS (CORRIGIDO PARA IPHONE) ---
+# --- GERADOR DO ARQUIVO .PKPASS ---
 
 @app.get("/pacientes/meu-perfil/{cpf}/pkpass")
 def baixar_carteira_apple_wallet(cpf: str, request: Request):
     p = buscar_dados_completos(cpf)
     if not p:
-        raise HTTPException(status_code=404, detail="Paciente não encontrado")
+        return HTMLResponse("<h2>Erro ao gerar carteira.</h2>", status_code=200)
     base_url = str(request.base_url).rstrip("/")
     
     pass_json = {
@@ -691,8 +714,6 @@ def baixar_carteira_apple_wallet(cpf: str, request: Request):
         zip_file.writestr('logo.png', logo_buffer.getvalue())
         
     headers = {"Content-Disposition": f"attachment; filename=vitalssafe_{cpf}.pkpass"}
-    
-    # Resolvido: Retorna os dados compactados em Response tradicional com tamanho explícito
     return Response(content=zip_buffer.getvalue(), media_type="application/vnd.apple.pkpass", headers=headers)
 
 
@@ -707,7 +728,7 @@ def consultar_dados_emergencia_publico(token_emergencia: str):
     
     if not p_row:
         conn.close()
-        return "<html><body style='font-family:sans-serif; text-align:center; padding:50px; color:red;'><h2>⚠️ Registro Inválido.</h2></body></html>"
+        return "<html><body style='font-family:sans-serif; text-align:center; padding:50px; color:red;'><h2>⚠️ Ficha Médica Não Encontrada.</h2></body></html>"
         
     cpf, nome_completo, tipo_sanguineo, contato_emergencia = p_row
     cursor.execute("SELECT nome, status, observacoes FROM doencas_cronicas WHERE paciente_cpf = ?", (cpf,))
